@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradeView — Real-Time Stock Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #080c10;
+    --surface: #0d1117;
+    --surface2: #161b22;
+    --surface3: #1c2128;
+    --border: #21262d;
+    --green: #00d26a;
+    --red: #ff4444;
+    --yellow: #ffd700;
+    --blue: #58a6ff;
+    --purple: #bc8cff;
+    --text: #c9d1d9;
+    --muted: #484f58;
+    --bright: #f0f6fc;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    grid-template-columns: 240px 1fr;
+  }
+
+  /* Header */
+  .topbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+  }
+  .logo {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 24px;
+    letter-spacing: 2px;
+    color: var(--bright);
+  }
+  .logo span { color: var(--green); }
+  .ticker-tape {
+    flex: 1;
+    overflow: hidden;
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+  .ticker-inner {
+    display: flex;
+    gap: 32px;
+    animation: scroll 20s linear infinite;
+    white-space: nowrap;
+  }
+  @keyframes scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .tick-item {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  .tick-sym { color: var(--blue); font-weight: 700; }
+  .tick-price { color: var(--bright); }
+  .tick-chg.pos { color: var(--green); }
+  .tick-chg.neg { color: var(--red); }
+
+  .search-wrap {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .search-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--bright);
+    padding: 7px 14px 7px 36px;
+    border-radius: 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    width: 180px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--blue); }
+  .search-icon {
+    position: absolute;
+    left: 10px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .search-results {
+    position: absolute;
+    top: 100%; left: 0; right: 0;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    z-index: 200;
+    display: none;
+  }
+  .search-result-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-result-item:hover { background: var(--surface3); }
+  .search-result-item:last-child { border-bottom: none; }
+
+  .time-display {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px 0;
+  }
+  .sidebar-section {
+    padding: 0 16px;
+    margin-bottom: 24px;
+  }
+  .sidebar-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    padding: 0 4px;
+  }
+  .stock-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 12px;
+    background: none;
+    border: none;
+    color: var(--text);
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 13px;
+    transition: all 0.15s;
+    font-family: 'Inter', sans-serif;
+    text-align: left;
+    margin-bottom: 2px;
+  }
+  .stock-btn:hover { background: var(--surface2); color: var(--bright); }
+  .stock-btn.active { background: var(--surface3); color: var(--bright); border-left: 2px solid var(--blue); }
+  .stock-sym { font-family: 'Space Mono', monospace; font-weight: 700; font-size: 12px; }
+  .stock-pct { font-family: 'Space Mono', monospace; font-size: 11px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+
+  /* Main Content */
+  .content {
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--bg);
+  }
+
+  /* Stock Header */
+  .stock-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .stock-title h2 {
+    font-family: 'Bebas Neue', cursive;
+    font-size: 42px;
+    letter-spacing: 1px;
+    color: var(--bright);
+    line-height: 1;
+  }
+  .stock-title .company-name {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .price-block { text-align: right; }
+  .current-price {
+    font-family: 'Space Mono', monospace;
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--bright);
+    line-height: 1;
+  }
+  .price-change {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    margin-top: 6px;
+  }
+  .last-update {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* Period Selector */
+  .period-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    background: var(--surface);
+    padding: 6px;
+    border-radius: 8px;
+    width: fit-content;
+    border: 1px solid var(--border);
+  }
+  .period-btn {
+    padding: 5px 14px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    border-radius: 5px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    transition: all 0.15s;
+  }
+  .period-btn:hover { color: var(--bright); }
+  .period-btn.active {
+    background: var(--surface3);
+    color: var(--bright);
+    border: 1px solid var(--border);
+  }
+
+  /* Chart */
+  .chart-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    height: 320px;
+    position: relative;
+  }
+  .chart-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(13,17,23,0.8);
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    z-index: 10;
+  }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 10px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Stats Grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--blue); }
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .stat-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--bright);
+  }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* Indicators Row */
+  .indicators-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .indicator-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .indicator-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .indicator-value {
+    font-family: 'Space Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .indicator-desc { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  /* RSI Bar */
+  .rsi-bar-bg {
+    height: 6px;
+    background: var(--surface3);
+    border-radius: 3px;
+    margin: 8px 0;
+    position: relative;
+  }
+  .rsi-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--green), var(--yellow), var(--red));
+    width: 0%;
+    transition: width 0.6s ease;
+  }
+  .rsi-zones {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+  }
+
+  /* Volume Chart */
+  .vol-chart-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    height: 160px;
+  }
+
+  /* Loading state */
+  .loading-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    gap: 12px;
+  }
+
+  @media (max-width: 768px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 56px auto 1fr; }
+    .sidebar { display: none; }
+    .indicators-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<header class="topbar">
+  <div class="logo">Trade<span>View</span></div>
+  <div class="ticker-tape">
+    <div class="ticker-inner" id="tickerTape">
+      <span class="tick-item"><span class="tick-sym">AAPL</span><span class="tick-price">—</span><span class="tick-chg">—</span></span>
+      <span class="tick-item"><span class="tick-sym">TSLA</span><span class="tick-price">—</span><span class="tick-chg">—</span></span>
+      <span class="tick-item"><span class="tick-sym">NVDA</span><span class="tick-price">—</span><span class="tick-chg">—</span></span>
+      <span class="tick-item"><span class="tick-sym">MSFT</span><span class="tick-price">—</span><span class="tick-chg">—</span></span>
+    </div>
+  </div>
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input class="search-input" id="searchInput" placeholder="Search symbol..." autocomplete="off">
+    <div class="search-results" id="searchResults"></div>
+  </div>
+  <div class="time-display" id="clock">--:--:--</div>
+</header>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-label">Watchlist</div>
+    {% for stock in stocks %}
+    <button class="stock-btn" onclick="loadStock('{{ stock.symbol }}')" id="btn-{{ stock.symbol | replace('.', '_') }}">
+      <span class="stock-sym">{{ stock.symbol }}</span>
+      <span class="stock-pct" id="pct-{{ stock.symbol | replace('.', '_') }}">—</span>
+    </button>
+    {% endfor %}
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="content">
+  <div id="mainContent">
+    <div class="loading-placeholder" style="height:400px">
+      <div style="font-size:32px">📈</div>
+      <div>Select a stock from the watchlist</div>
+    </div>
+  </div>
+</main>
+
+<script>
+let priceChart = null;
+let volumeChart = null;
+let currentSymbol = 'AAPL';
+let currentPeriod = '1M';
+let refreshInterval = null;
+
+// Clock
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Search
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+let searchTimeout;
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  const q = searchInput.value.trim();
+  if (q.length < 1) { searchResults.style.display = 'none'; return; }
+  searchTimeout = setTimeout(async () => {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (data.length > 0) {
+      searchResults.innerHTML = data.map(d => `
+        <div class="search-result-item" onclick="loadStock('${d.symbol}');searchResults.style.display='none';searchInput.value=''">
+          <strong style="font-family:'Space Mono',monospace">${d.symbol}</strong>
+          <span style="color:var(--muted);font-size:11px;margin-left:8px">${d.name}</span>
+        </div>
+      `).join('');
+      searchResults.style.display = 'block';
+    } else {
+      searchResults.innerHTML = `<div class="search-result-item" style="color:var(--muted)">No results for "${q}"</div>`;
+      searchResults.style.display = 'block';
+    }
+  }, 400);
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) searchResults.style.display = 'none';
+});
+
+async function loadStock(symbol, period) {
+  currentSymbol = symbol;
+  currentPeriod = period || currentPeriod;
+
+  // Update active sidebar button
+  document.querySelectorAll('.stock-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById(`btn-${symbol.replace('.','_')}`);
+  if (btn) btn.classList.add('active');
+
+  renderLoading();
+  clearInterval(refreshInterval);
+
+  await fetchAndRender();
+  refreshInterval = setInterval(fetchAndRender, 60000);
+}
+
+function renderLoading() {
+  const main = document.getElementById('mainContent');
+  main.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px">
+      <div>
+        <div style="font-family:'Bebas Neue',cursive;font-size:42px;color:var(--bright)">${currentSymbol}</div>
+        <div style="color:var(--muted);font-size:13px">Loading...</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:'Space Mono',monospace;font-size:36px;color:var(--muted)">—</div>
+      </div>
+    </div>
+    <div class="chart-container"><div class="chart-loading"><div class="spinner"></div>Fetching market data...</div></div>
+  `;
+}
+
+async function fetchAndRender() {
+  try {
+    const res = await fetch(`/api/stock/${currentSymbol}?period=${currentPeriod}`);
+    const d = await res.json();
+    if (d.error) { alert('Error: ' + d.error); return; }
+    renderDashboard(d);
+    updateSidebarPct(d.symbol, d.change_pct);
+  } catch(e) {
+    console.error(e);
+  }
+}
+
+function updateSidebarPct(symbol, pct) {
+  const el = document.getElementById(`pct-${symbol.replace('.','_')}`);
+  if (el) {
+    el.textContent = `${pct > 0 ? '+' : ''}${pct}%`;
+    el.className = `stock-pct ${pct >= 0 ? 'pos' : 'neg'}`;
+  }
+}
+
+function renderDashboard(d) {
+  const isPos = d.change >= 0;
+  const color = isPos ? 'var(--green)' : 'var(--red)';
+  const arrow = isPos ? '▲' : '▼';
+
+  let rsiColor = 'var(--yellow)';
+  let rsiSignal = 'Neutral';
+  if (d.rsi) {
+    if (d.rsi > 70) { rsiColor = 'var(--red)'; rsiSignal = 'Overbought'; }
+    else if (d.rsi < 30) { rsiColor = 'var(--green)'; rsiSignal = 'Oversold'; }
+    else { rsiColor = 'var(--yellow)'; rsiSignal = 'Neutral'; }
+  }
+
+  const macdColor = d.macd > d.macd_signal ? 'var(--green)' : 'var(--red)';
+  const macdSignal = d.macd > d.macd_signal ? 'Bullish Crossover' : 'Bearish Crossover';
+
+  const main = document.getElementById('mainContent');
+  main.innerHTML = `
+    <!-- Header -->
+    <div class="stock-header">
+      <div class="stock-title">
+        <h2>${d.symbol}</h2>
+        <div class="company-name">${d.name} · ${d.exchange} · ${d.sector}</div>
+      </div>
+      <div class="price-block">
+        <div class="current-price" style="color:${color}">${d.currency === 'USD' ? '$' : '₹'}${d.current_price.toLocaleString()}</div>
+        <div class="price-change" style="color:${color}">${arrow} ${Math.abs(d.change)} (${d.change >= 0 ? '+' : ''}${d.change_pct}%)</div>
+        <div class="last-update">Updated: ${d.timestamp}</div>
+      </div>
+    </div>
+
+    <!-- Period Selector -->
+    <div class="period-bar">
+      ${['1D','5D','1M','6M','1Y','5Y'].map(p => `
+        <button class="period-btn ${p === d.period ? 'active' : ''}" onclick="loadStock('${d.symbol}','${p}')">${p}</button>
+      `).join('')}
+    </div>
+
+    <!-- Price Chart -->
+    <div class="chart-container">
+      <canvas id="priceChart"></canvas>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Day Range</div>
+        <div class="stat-value" style="font-size:13px">${d.day_low} – ${d.day_high}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">52-Week Range</div>
+        <div class="stat-value" style="font-size:13px">${d.week52_low} – ${d.week52_high}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Market Cap</div>
+        <div class="stat-value">${d.market_cap}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Volume</div>
+        <div class="stat-value">${d.volume}</div>
+        <div class="stat-sub">Avg: ${d.avg_volume}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">P/E Ratio</div>
+        <div class="stat-value">${d.pe_ratio}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">EPS</div>
+        <div class="stat-value">${d.eps}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Dividend Yield</div>
+        <div class="stat-value">${d.dividend_yield}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Beta</div>
+        <div class="stat-value">${d.beta}</div>
+      </div>
+    </div>
+
+    <!-- Technical Indicators -->
+    <div class="indicators-grid">
+      <div class="indicator-card">
+        <div class="indicator-label">RSI (14)</div>
+        <div class="indicator-value" style="color:${rsiColor}">${d.rsi ?? 'N/A'}</div>
+        <div class="rsi-bar-bg">
+          <div class="rsi-bar-fill" style="width:${d.rsi ?? 50}%"></div>
+        </div>
+        <div class="rsi-zones"><span>Oversold 30</span><span>Overbought 70</span></div>
+        <div class="indicator-desc" style="color:${rsiColor};margin-top:6px">${rsiSignal}</div>
+      </div>
+      <div class="indicator-card">
+        <div class="indicator-label">MACD</div>
+        <div class="indicator-value" style="color:${macdColor}">${d.macd}</div>
+        <div class="indicator-desc">Signal: ${d.macd_signal}</div>
+        <div class="indicator-desc" style="color:${macdColor};margin-top:6px">${macdSignal}</div>
+      </div>
+      <div class="indicator-card">
+        <div class="indicator-label">Moving Averages</div>
+        <div style="margin-top:8px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:12px;color:var(--muted)">MA(20)</span>
+            <span style="font-family:'Space Mono',monospace;font-size:13px;color:${d.ma20 ? (d.current_price > d.ma20 ? 'var(--green)' : 'var(--red)') : 'var(--muted)'}">${d.ma20 ?? 'N/A'}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <span style="font-size:12px;color:var(--muted)">MA(50)</span>
+            <span style="font-family:'Space Mono',monospace;font-size:13px;color:${d.ma50 ? (d.current_price > d.ma50 ? 'var(--green)' : 'var(--red)') : 'var(--muted)'}">${d.ma50 ?? 'N/A'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Volume Chart -->
+    <div class="vol-chart-container">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px">Volume</div>
+      <canvas id="volChart" style="height:100px"></canvas>
+    </div>
+  `;
+
+  // Build charts
+  buildPriceChart(d);
+  buildVolumeChart(d);
+}
+
+function buildPriceChart(d) {
+  const ctx = document.getElementById('priceChart').getContext('2d');
+  if (priceChart) { priceChart.destroy(); }
+
+  const labels = d.chart_data.map(p => p.time);
+  const closes = d.chart_data.map(p => p.close);
+  const isPos = closes[closes.length-1] >= closes[0];
+  const lineColor = isPos ? '#00d26a' : '#ff4444';
+
+  priceChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Price',
+        data: closes,
+        borderColor: lineColor,
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        backgroundColor: ctx => {
+          const gradient = ctx.chart.ctx.createLinearGradient(0,0,0,280);
+          gradient.addColorStop(0, isPos ? 'rgba(0,210,106,0.15)' : 'rgba(255,68,68,0.15)');
+          gradient.addColorStop(1, 'rgba(0,0,0,0)');
+          return gradient;
+        },
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#161b22',
+          borderColor: '#21262d',
+          borderWidth: 1,
+          titleColor: '#c9d1d9',
+          bodyColor: lineColor,
+          titleFont: { family: 'Space Mono', size: 11 },
+          bodyFont: { family: 'Space Mono', size: 13 },
+          callbacks: {
+            label: ctx => ` $${ctx.raw.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(33,38,45,0.8)', drawBorder: false },
+          ticks: {
+            color: '#484f58', font: { family: 'Space Mono', size: 10 },
+            maxTicksLimit: 8,
+          }
+        },
+        y: {
+          grid: { color: 'rgba(33,38,45,0.8)', drawBorder: false },
+          ticks: {
+            color: '#484f58', font: { family: 'Space Mono', size: 10 },
+            callback: v => `$${v.toLocaleString()}`
+          },
+          position: 'right'
+        }
+      }
+    }
+  });
+}
+
+function buildVolumeChart(d) {
+  const ctx = document.getElementById('volChart').getContext('2d');
+  if (volumeChart) { volumeChart.destroy(); }
+
+  const labels = d.chart_data.map(p => p.time);
+  const volumes = d.chart_data.map(p => p.volume);
+  const colors = d.chart_data.map((p,i) =>
+    i === 0 ? 'rgba(88,166,255,0.5)' : p.close >= d.chart_data[i-1]?.close ? 'rgba(0,210,106,0.5)' : 'rgba(255,68,68,0.5)'
+  );
+
+  volumeChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: volumes, backgroundColor: colors, borderWidth: 0 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${(ctx.raw/1e6).toFixed(2)}M` } } },
+      scales: {
+        x: { display: false },
+        y: { display: false }
+      }
+    }
+  });
+}
+
+// Load watchlist prices in background
+async function loadWatchlistPrices() {
+  const symbols = [{% for s in stocks %}'{{ s.symbol }}',{% endfor %}];
+  try {
+    const res = await fetch('/api/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols })
+    });
+    const data = await res.json();
+
+    // Update ticker tape
+    const tape = document.getElementById('tickerTape');
+    const items = data.map(d => {
+      const cls = d.change_pct >= 0 ? 'pos' : 'neg';
+      const arrow = d.change_pct >= 0 ? '▲' : '▼';
+      return `<span class="tick-item"><span class="tick-sym">${d.symbol}</span><span class="tick-price">${d.currency==='USD'?'$':'₹'}${d.price}</span><span class="tick-chg ${cls}">${arrow}${Math.abs(d.change_pct)}%</span></span>`;
+    });
+    tape.innerHTML = [...items, ...items].join('');
+
+    // Update sidebar
+    data.forEach(d => updateSidebarPct(d.symbol, d.change_pct));
+  } catch(e) { console.error('Watchlist error', e); }
+}
+
+// Init
+loadWatchlistPrices();
+loadStock('AAPL');
+</script>
+</body>
+</html>
